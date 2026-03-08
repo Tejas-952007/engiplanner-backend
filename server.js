@@ -17,15 +17,28 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-// ─── Email Transporter ────────────────────────────────────────────────────
+// ─── Direct HTTP Email Instead of SMTP ──────────────────────────────────────
+const sendHttpEmail = async (to, subject, html) => {
+  // We will use a public free relay or API that doesn't use SMTP
+  // Render allows HTTP requests out. Since we need to send to dynamic emails securely
+  // we should use a generic API or use custom EmailJS if possible.
+  // However, since we own the app, we can use Brevo / Sendinblue / Resend FREE if API key provided,
+  // OR just use nodemailer with another config.
+  // Wait, let's try configuring nodemailer with direct transport fallback, or we can use 
+  // default SMTP but force IPv4 only by adding localAddress: '0.0.0.0' or specific settings.
+  // Sometimes Render blocks IPv6 SMTP.
+};
+
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 465,       // Use secure port
-  secure: true,    // true for 465, false for other ports
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  // Force IPv4 to prevent Render IPv6 networking routing loops that cause timeouts
+  localAddress: '0.0.0.0'
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
