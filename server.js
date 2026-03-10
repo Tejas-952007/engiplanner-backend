@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
 const admin = require('firebase-admin');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 // ─── Firebase Admin Init ──────────────────────────────────────────────────
 admin.initializeApp({
@@ -17,30 +17,21 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-// ─── Direct HTTP Email Instead of SMTP ──────────────────────────────────────
-const sendHttpEmail = async (to, subject, html) => {
-  // We will use a public free relay or API that doesn't use SMTP
-  // Render allows HTTP requests out. Since we need to send to dynamic emails securely
-  // we should use a generic API or use custom EmailJS if possible.
-  // However, since we own the app, we can use Brevo / Sendinblue / Resend FREE if API key provided,
-  // OR just use nodemailer with another config.
-  // Wait, let's try configuring nodemailer with direct transport fallback, or we can use 
-  // default SMTP but force IPv4 only by adding localAddress: '0.0.0.0' or specific settings.
-  // Sometimes Render blocks IPv6 SMTP.
+// ─── Resend Client (HTTP API — works on Render, no SMTP port needed) ────────
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Central send function — drop-in replacement for nodemailer
+const sendEmail = async (to, subject, html) => {
+  const { data, error } = await resend.emails.send({
+    from: 'EngiPlanner <onboarding@resend.dev>',
+    to: [to],
+    subject,
+    html,
+  });
+  if (error) throw new Error(JSON.stringify(error));
+  return data;
 };
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // STARTTLS — Render allows port 587
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false // allow self-signed on some cloud networks
-  }
-});
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -159,12 +150,11 @@ async function sendDeadlineEmail(email, userName, tasks) {
   </body>
   </html>`;
 
-  await transporter.sendMail({
-    from: `"${process.env.APP_NAME}" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: `⏰ ${dueToday.length + overdue.length} Task${dueToday.length + overdue.length > 1 ? 's' : ''} need your attention — ${process.env.APP_NAME}`,
-    html,
-  });
+  await sendEmail(
+    email,
+    `⏰ ${dueToday.length + overdue.length} Task${dueToday.length + overdue.length > 1 ? 's' : ''} need your attention — ${process.env.APP_NAME}`,
+    html
+  );
 
   console.log(`✅ Email sent to ${email} (${overdue.length} overdue, ${dueToday.length} due today)`);
 }
@@ -268,12 +258,11 @@ async function sendMorningBriefingEmail(email, userName, allTasks) {
 
   const pendingCount = overdue.length + dueToday.length;
   const subjectEmoji = pendingCount > 0 ? '⚠️' : '☀️';
-  await transporter.sendMail({
-    from: `"${process.env.APP_NAME}" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: `${subjectEmoji} Morning Briefing — ${dueToday.length} due today, ${overdue.length} overdue · ${process.env.APP_NAME}`,
-    html,
-  });
+  await sendEmail(
+    email,
+    `${subjectEmoji} Morning Briefing — ${dueToday.length} due today, ${overdue.length} overdue · ${process.env.APP_NAME}`,
+    html
+  );
 
   console.log(`☀️ Morning briefing sent to ${email}`);
 }
