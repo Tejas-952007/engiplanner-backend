@@ -382,6 +382,41 @@ app.post('/trigger-briefing', async (req, res) => {
   runMorningBriefings();
 });
 
+// ─── User self-triggered reminder (secure via Firebase ID token) ─────────────
+// Frontend calls this with the logged-in user's ID token — no shared secret needed
+app.post('/send-my-reminder', async (req, res) => {
+  const { idToken } = req.body;
+  if (!idToken) return res.status(400).json({ error: 'idToken required' });
+
+  let uid;
+  try {
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    uid = decoded.uid;
+  } catch (e) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+
+  try {
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
+
+    const data = userDoc.data();
+    const profile = data?.profile || {};
+    const tasks = data?.tasks || [];
+
+    if (!profile.email) return res.status(400).json({ error: 'No email on profile' });
+
+    res.json({ message: 'Sending your reminder now! Check your inbox in a few seconds.' });
+
+    // Send async — don't await so response is fast
+    sendMorningBriefingEmail(profile.email, profile.name || 'Student', tasks)
+      .then(() => console.log(`📧 Self-triggered briefing sent to ${profile.email}`))
+      .catch(e => console.error('Self-trigger email error:', e.message));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`\n🌐 EngiPlanner Email Service running on port ${PORT}`);
