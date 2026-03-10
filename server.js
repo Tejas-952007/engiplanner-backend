@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
 const admin = require('firebase-admin');
-const { Resend } = require('resend');
+// No external email package needed — uses Node 18 built-in fetch + Resend REST API
 
 // ─── Firebase Admin Init ──────────────────────────────────────────────────
 admin.initializeApp({
@@ -17,18 +17,25 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-// ─── Resend Client (HTTP API — works on Render, no SMTP port needed) ────────
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-// Central send function — drop-in replacement for nodemailer
+// ─── Resend REST API (native fetch, no package needed) ─────────────────────
+// Resend uses HTTPS so no SMTP port issues on Render free tier
 const sendEmail = async (to, subject, html) => {
-  const { data, error } = await resend.emails.send({
-    from: 'EngiPlanner <onboarding@resend.dev>',
-    to: [to],
-    subject,
-    html,
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: 'EngiPlanner <onboarding@resend.dev>',
+      to: [to],
+      subject,
+      html,
+    }),
   });
-  if (error) throw new Error(JSON.stringify(error));
+  const data = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(data));
+  console.log(`✉️ Resend OK → id: ${data.id}`);
   return data;
 };
 
