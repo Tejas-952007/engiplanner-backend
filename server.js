@@ -31,14 +31,15 @@ const sendHttpEmail = async (to, subject, html) => {
 
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
+  port: 587,
+  secure: false, // STARTTLS — Render allows port 587
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  // Force IPv4 to prevent Render IPv6 networking routing loops that cause timeouts
-  localAddress: '0.0.0.0'
+  tls: {
+    rejectUnauthorized: false // allow self-signed on some cloud networks
+  }
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
